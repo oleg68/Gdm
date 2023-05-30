@@ -100,6 +100,7 @@ configure_file(
 pam_data_files_map = {
   'redhat': [
     'gdm-autologin',
+    'gdm-external-auth',
     'gdm-launch-environment',
     'gdm-fingerprint',
     'gdm-smartcard',

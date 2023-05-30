@@ -69,6 +69,7 @@ GdmUserVerifier   *gdm_client_get_user_verifier_sync    (GdmClient *client,
                                                          GError          **error);
 
 GdmUserVerifierChoiceList *gdm_client_get_user_verifier_choice_list  (GdmClient *client);
+GdmUserVerifierExternalAuth *gdm_client_get_user_verifier_external_auth  (GdmClient *client);
 
 void               gdm_client_get_greeter               (GdmClient     *client,
                                                          GCancellable         *cancellable,

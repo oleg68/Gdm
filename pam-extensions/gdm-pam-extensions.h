@@ -21,5 +21,6 @@
 #define GDM_PAM_EXTENSIONS_H
 
 #include "gdm-choice-list-pam-extension.h"
+#include "gdm-external-auth-pam-extension.h"
 
 #endif

@@ -177,6 +177,7 @@ static char gdm_pam_extension_environment_block[_POSIX_ARG_MAX];
 static const char * const
 gdm_supported_pam_extensions[] = {
         GDM_PAM_EXTENSION_CHOICE_LIST,
+        GDM_PAM_EXTENSION_EXTERNAL_AUTH,
         NULL
 };
 #endif
@@ -580,6 +581,71 @@ gdm_session_worker_process_choice_list_request (GdmSessionWorker                
 }
 
 static gboolean
+gdm_session_worker_ask_to_start_external_auth (GdmSessionWorker *worker,
+                                               const char       *message)
+{
+        g_autoptr(GError) error = NULL;
+        gboolean res;
+
+        g_debug ("GdmSessionWorker: requesting user initiate external auth process.");
+        g_debug ("GdmSessionWorker: (and waiting for reply)");
+        res = gdm_dbus_worker_manager_call_external_auth_start_request_sync (worker->manager,
+                                                                             worker->service,
+                                                                             message,
+                                                                             NULL,
+                                                                             &error);
+
+        if (! res) {
+                g_debug ("GdmSessionWorker: request failed: %s", error->message);
+        }
+
+        return res;
+}
+
+static gboolean
+gdm_session_worker_process_external_auth_start_request (GdmSessionWorker                         *worker,
+                                                        GdmPamExtensionExternalAuthStartRequest  *request,
+                                                        GdmPamExtensionExternalAuthStartResponse *response)
+{
+
+        return gdm_session_worker_ask_to_start_external_auth (worker, request->message);
+}
+
+static gboolean
+gdm_session_worker_display_link (GdmSessionWorker *worker,
+                                 const char       *message,
+                                 const char       *uri,
+                                 const char       *code)
+{
+        g_autoptr(GError) error = NULL;
+        gboolean res;
+
+        g_debug ("GdmSessionWorker: requesting user visit url: %s (code %s)", uri, code);
+        g_debug ("GdmSessionWorker: (and waiting for reply)");
+        res = gdm_dbus_worker_manager_call_external_auth_display_link_request_sync (worker->manager,
+                                                                                    worker->service,
+                                                                                    message,
+                                                                                    uri,
+                                                                                    code,
+                                                                                    NULL,
+                                                                                    &error);
+
+        if (! res) {
+                g_debug ("GdmSessionWorker: request failed: %s", error->message);
+        }
+
+        return res;
+}
+
+static gboolean
+gdm_session_worker_process_external_auth_display_link_request (GdmSessionWorker                               *worker,
+                                                               GdmPamExtensionExternalAuthDisplayLinkRequest  *request,
+                                                               GdmPamExtensionExternalAuthDisplayLinkResponse *response)
+{
+        return gdm_session_worker_display_link (worker, request->message, request->uri, request->code);
+}
+
+static gboolean
 gdm_session_worker_process_extended_pam_message (GdmSessionWorker          *worker,
                                                  const struct pam_message  *query,
                                                  char                     **response)
@@ -615,6 +681,38 @@ gdm_session_worker_process_extended_pam_message (GdmSessionWorker          *work
                 }
 
                 *response = GDM_PAM_EXTENSION_MESSAGE_TO_PAM_REPLY (list_response);
+                return TRUE;
+        } else if (GDM_PAM_EXTENSION_MESSAGE_MATCH (extended_message, worker->extensions, GDM_PAM_EXTENSION_EXTERNAL_AUTH_START_REQUEST)) {
+                GdmPamExtensionExternalAuthStartRequest *start_request = (GdmPamExtensionExternalAuthStartRequest *) extended_message;
+                g_autofree GdmPamExtensionExternalAuthStartResponse *start_response = malloc (GDM_PAM_EXTENSION_EXTERNAL_AUTH_START_RESPONSE_SIZE);
+
+                g_debug ("GdmSessionWorker: received extended pam message '%s'", GDM_PAM_EXTENSION_EXTERNAL_AUTH_START_REQUEST);
+
+                GDM_PAM_EXTENSION_EXTERNAL_AUTH_START_RESPONSE_INIT (start_response);
+
+                res = gdm_session_worker_process_external_auth_start_request (worker, start_request, start_response);
+
+                if (! res) {
+                        return FALSE;
+                }
+
+                *response = GDM_PAM_EXTENSION_MESSAGE_TO_PAM_REPLY (g_steal_pointer (&start_response));
+                return TRUE;
+        } else if (GDM_PAM_EXTENSION_MESSAGE_MATCH (extended_message, worker->extensions, GDM_PAM_EXTENSION_EXTERNAL_AUTH_DISPLAY_LINK_REQUEST)) {
+                GdmPamExtensionExternalAuthDisplayLinkRequest *display_link_request = (GdmPamExtensionExternalAuthDisplayLinkRequest *) extended_message;
+                g_autofree GdmPamExtensionExternalAuthDisplayLinkResponse *display_link_response = malloc (GDM_PAM_EXTENSION_EXTERNAL_AUTH_DISPLAY_LINK_RESPONSE_SIZE);
+
+                g_debug ("GdmSessionWorker: received extended pam message '%s'", GDM_PAM_EXTENSION_EXTERNAL_AUTH_DISPLAY_LINK_REQUEST);
+
+                GDM_PAM_EXTENSION_EXTERNAL_AUTH_DISPLAY_LINK_RESPONSE_INIT (display_link_response);
+
+                res = gdm_session_worker_process_external_auth_display_link_request (worker, display_link_request, display_link_response);
+
+                if (! res) {
+                        return FALSE;
+                }
+
+                *response = GDM_PAM_EXTENSION_MESSAGE_TO_PAM_REPLY (g_steal_pointer (&display_link_response));
                 return TRUE;
         } else {
                 g_debug ("GdmSessionWorker: received extended pam message of unknown type %u", (unsigned int) extended_message->type);
@@ -2945,7 +3043,7 @@ filter_extensions (const char * const *extensions)
 
         for (i = 0; extensions[i] != NULL; i++) {
                 for (j = 0; gdm_supported_pam_extensions[j] != NULL; j++) {
-                        if (g_strcmp0 (extensions[i], gdm_supported_pam_extensions[j]) == 0) {
+                        if (g_str_has_prefix (gdm_supported_pam_extensions[j], extensions[i]) == 0) {
                                 g_ptr_array_add (array, g_strdup (gdm_supported_pam_extensions[j]));
                                 break;
                         }

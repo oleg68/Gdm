@@ -775,6 +775,82 @@ gdm_session_handle_choice_list_query (GdmDBusWorkerManager  *worker_manager_inte
 }
 
 static gboolean
+gdm_session_handle_external_auth_start_request (GdmDBusWorkerManager  *worker_manager_interface,
+                                                GDBusMethodInvocation *invocation,
+                                                const char            *service_name,
+                                                const char            *message,
+                                                GdmSession            *self)
+{
+        GdmSessionConversation *conversation;
+        GdmDBusUserVerifierExternalAuth *external_auth_interface = NULL;
+
+        g_debug ("GdmSession: external auth request for service '%s'", service_name);
+
+        if (self->user_verifier_extensions != NULL)
+                external_auth_interface = g_hash_table_lookup (self->user_verifier_extensions,
+                                                               gdm_dbus_user_verifier_external_auth_interface_info ()->name);
+
+        if (external_auth_interface == NULL) {
+                g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                                       G_DBUS_ERROR_NOT_SUPPORTED,
+                                                       "ExternalAuth interface not supported by client");
+                return TRUE;
+        }
+
+        conversation = find_conversation_by_name (self, service_name);
+        if (conversation != NULL) {
+                set_pending_query (conversation, invocation);
+
+                g_debug ("GdmSession: emitting start request '%s'", message);
+                gdm_dbus_user_verifier_external_auth_emit_start_request (external_auth_interface,
+                                                                         service_name,
+                                                                         message);
+        }
+
+        return TRUE;
+}
+
+static gboolean
+gdm_session_handle_external_auth_display_link_request (GdmDBusWorkerManager  *worker_manager_interface,
+                                                       GDBusMethodInvocation *invocation,
+                                                       const char            *service_name,
+                                                       const char            *message,
+                                                       const char            *url,
+                                                       const char            *code,
+                                                       GdmSession            *self)
+{
+        GdmSessionConversation *conversation;
+        GdmDBusUserVerifierExternalAuth *external_auth_interface = NULL;
+
+        g_debug ("GdmSession: external auth display link request for service '%s'", service_name);
+
+        if (self->user_verifier_extensions != NULL)
+                external_auth_interface = g_hash_table_lookup (self->user_verifier_extensions,
+                                                               gdm_dbus_user_verifier_external_auth_interface_info ()->name);
+
+        if (external_auth_interface == NULL) {
+                g_dbus_method_invocation_return_error (invocation, G_DBUS_ERROR,
+                                                       G_DBUS_ERROR_NOT_SUPPORTED,
+                                                       "ExternalAuth interface not supported by client");
+                return TRUE;
+        }
+
+        conversation = find_conversation_by_name (self, service_name);
+        if (conversation != NULL) {
+                set_pending_query (conversation, invocation);
+
+                g_debug ("GdmSession: emitting display lihnk request '%s'", message);
+                gdm_dbus_user_verifier_external_auth_emit_display_link_request (external_auth_interface,
+                                                                                service_name,
+                                                                                message,
+                                                                                url,
+                                                                                code);
+        }
+
+        return TRUE;
+}
+
+static gboolean
 gdm_session_handle_info_query (GdmDBusWorkerManager  *worker_manager_interface,
                                GDBusMethodInvocation *invocation,
                                const char            *service_name,
@@ -1254,6 +1330,14 @@ export_worker_manager_interface (GdmSession      *self,
                           "handle-choice-list-query",
                           G_CALLBACK (gdm_session_handle_choice_list_query),
                           self);
+        g_signal_connect (worker_manager_interface,
+                          "handle-external-auth-start-request",
+                          G_CALLBACK (gdm_session_handle_external_auth_start_request),
+                          self);
+        g_signal_connect (worker_manager_interface,
+                          "handle-external-auth-display-link-request",
+                          G_CALLBACK (gdm_session_handle_external_auth_display_link_request),
+                          self);
 
         g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (worker_manager_interface),
                                           connection,
@@ -1285,6 +1369,12 @@ unexport_worker_manager_interface (GdmSession           *self,
                                               self);
         g_signal_handlers_disconnect_by_func (worker_manager_interface,
                                               G_CALLBACK (gdm_session_handle_choice_list_query),
+                                              self);
+        g_signal_handlers_disconnect_by_func (worker_manager_interface,
+                                              G_CALLBACK (gdm_session_handle_external_auth_start_request),
+                                              self);
+        g_signal_handlers_disconnect_by_func (worker_manager_interface,
+                                              G_CALLBACK (gdm_session_handle_external_auth_display_link_request),
                                               self);
 }
 
@@ -1376,6 +1466,73 @@ export_user_verifier_choice_list_interface (GdmSession      *self,
 }
 
 static gboolean
+gdm_session_handle_client_start_external_auth (GdmDBusUserVerifierExternalAuth  *external_auth_interface,
+                                               GDBusMethodInvocation            *invocation,
+                                               const char                       *service_name,
+                                               GdmSession                       *self)
+{
+        GdmSessionConversation *conversation;
+
+        g_debug ("GdmSession: user elected to start external auth");
+        gdm_dbus_user_verifier_external_auth_complete_start_response (external_auth_interface, invocation);
+
+        conversation = find_conversation_by_name (self, service_name);
+
+        if (conversation != NULL) {
+                gdm_dbus_worker_manager_complete_external_auth_start_request (conversation->worker_manager_interface, conversation->pending_invocation);
+                conversation->pending_invocation = NULL;
+        }
+
+        return TRUE;
+}
+
+static gboolean
+gdm_session_handle_client_link_displayed (GdmDBusUserVerifierExternalAuth  *external_auth_interface,
+                                          GDBusMethodInvocation            *invocation,
+                                          const char                       *service_name,
+                                          GdmSession                       *self)
+{
+        GdmSessionConversation *conversation;
+        g_debug ("GdmSession: user says they viewed link");
+        gdm_dbus_user_verifier_external_auth_complete_display_link_response (external_auth_interface, invocation);
+        conversation = find_conversation_by_name (self, service_name);
+
+        if (conversation != NULL) {
+            gdm_dbus_worker_manager_complete_external_auth_display_link_request (conversation->worker_manager_interface, conversation->pending_invocation);
+            conversation->pending_invocation = NULL;
+        }
+        return TRUE;
+}
+
+static void
+export_user_verifier_external_auth_interface (GdmSession      *self,
+                                              GDBusConnection *connection)
+{
+        GdmDBusUserVerifierExternalAuth   *interface;
+
+        interface = GDM_DBUS_USER_VERIFIER_EXTERNAL_AUTH (gdm_dbus_user_verifier_external_auth_skeleton_new ());
+
+        g_signal_connect (interface,
+                          "handle-start-response",
+                          G_CALLBACK (gdm_session_handle_client_start_external_auth),
+                          self);
+
+        g_signal_connect (interface,
+                          "handle-display-link-response",
+                          G_CALLBACK (gdm_session_handle_client_link_displayed),
+                          self);
+
+        g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (interface),
+                                          connection,
+                                          GDM_SESSION_DBUS_OBJECT_PATH,
+                                          NULL);
+
+        g_hash_table_insert (self->user_verifier_extensions,
+                             gdm_dbus_user_verifier_external_auth_interface_info ()->name,
+                             interface);
+}
+
+static gboolean
 gdm_session_handle_client_enable_extensions (GdmDBusUserVerifier    *user_verifier_interface,
                                              GDBusMethodInvocation  *invocation,
                                              const char * const *    extensions,
@@ -1393,7 +1550,9 @@ gdm_session_handle_client_enable_extensions (GdmDBusUserVerifier    *user_verifi
                 if (strcmp (extensions[i],
                             gdm_dbus_user_verifier_choice_list_interface_info ()->name) == 0)
                         export_user_verifier_choice_list_interface (self, connection);
-
+		else if (strcmp (extensions[i],
+                                 gdm_dbus_user_verifier_external_auth_interface_info ()->name) == 0)
+                        export_user_verifier_external_auth_interface (self, connection);
         }
 
         gdm_dbus_user_verifier_complete_enable_extensions (user_verifier_interface, invocation);

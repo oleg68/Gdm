@@ -28,6 +28,16 @@
       <arg name="query" direction="in" type="a{ss}"/>
       <arg name="answer" direction="out" type="s"/>
     </method>
+    <method name="ExternalAuthStartRequest">
+      <arg name="service_name" direction="in" type="s"/>
+      <arg name="message" direction="in" type="s"/>
+    </method>
+    <method name="ExternalAuthDisplayLinkRequest">
+      <arg name="service_name" direction="in" type="s"/>
+      <arg name="message" direction="in" type="s"/>
+      <arg name="uri" direction="in" type="s"/>
+      <arg name="code" direction="in" type="s"/>
+    </method>
   </interface>
   <interface name="org.gnome.DisplayManager.UserVerifier">
     <method name="EnableExtensions">
@@ -93,6 +103,24 @@
       <arg name="service_name" type="s"/>
       <arg name="prompt_message" type="s"/>
       <arg name="list" type="a{ss}"/>
+    </signal>
+  </interface>
+  <interface name="org.gnome.DisplayManager.UserVerifier.ExternalAuth">
+    <method name="StartResponse">
+      <arg name="service_name" direction="in" type="s"/>
+    </method>
+    <method name="DisplayLinkResponse">
+      <arg name="service_name" direction="in" type="s"/>
+    </method>
+    <signal name="StartRequest">
+      <arg name="service_name" type="s"/>
+      <arg name="message" type="s"/>
+    </signal>
+    <signal name="DisplayLinkRequest">
+      <arg name="service_name" type="s"/>
+      <arg name="message" type="s"/>
+      <arg name="uri" type="s"/>
+      <arg name="code" type="s"/>
     </signal>
   </interface>
   <interface name="org.gnome.DisplayManager.Greeter">

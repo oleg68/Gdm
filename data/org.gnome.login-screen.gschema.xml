@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="gdm">
   <schema id="org.gnome.login-screen" path="/org/gnome/login-screen/">
+    <key name="enable-external-authentication" type="b">
+      <default>true</default>
+      <summary>
+        Whether or not to allow external authentication for login
+      </summary>
+      <description>
+        The login screen can optionally allow users to authenticate with
+        an external device instead of directly with the system.
+      </description>
+    </key>
     <key name="enable-fingerprint-authentication" type="b">
       <default>true</default>
       <summary>

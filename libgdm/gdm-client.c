@@ -213,6 +213,31 @@ on_user_verifier_choice_list_proxy_created (GObject            *source,
 }
 
 static void
+on_user_verifier_external_auth_proxy_created (GObject            *source,
+                                              GAsyncResult       *result,
+                                              UserVerifierData   *data)
+{
+        GHashTable *user_verifier_extensions;
+        g_autoptr(GdmClient)       client = NULL;
+        GdmUserVerifierExternalAuth *external_auth;
+        g_autoptr(GError)          error = NULL;
+
+        client = GDM_CLIENT (g_async_result_get_source_object (G_ASYNC_RESULT (data->task)));
+
+        user_verifier_extensions = g_object_get_data (G_OBJECT (data->user_verifier), "gdm-client-user-verifier-extensions");
+        external_auth = gdm_user_verifier_external_auth_proxy_new_finish (result, &error);
+
+        if (external_auth == NULL) {
+                g_debug ("Couldn't create UserVerifier ExternalAuth proxy: %s", error->message);
+                g_hash_table_remove (user_verifier_extensions, gdm_user_verifier_external_auth_interface_info ()->name);
+        } else {
+                g_hash_table_replace (user_verifier_extensions, gdm_user_verifier_external_auth_interface_info ()->name, external_auth);
+        }
+
+        maybe_complete_user_verifier_proxy_operation (client, data);
+}
+
+static void
 on_user_verifier_extensions_enabled (GdmUserVerifier    *user_verifier,
                                      GAsyncResult       *result,
                                      UserVerifierData   *data)
@@ -254,6 +279,17 @@ on_user_verifier_extensions_enabled (GdmUserVerifier    *user_verifier,
                                                                  (GAsyncReadyCallback)
                                                                  on_user_verifier_choice_list_proxy_created,
                                                                  data);
+                } else if (strcmp (client->enabled_extensions[i],
+                                   gdm_user_verifier_external_auth_interface_info ()->name) == 0) {
+                        g_hash_table_insert (user_verifier_extensions, client->enabled_extensions[i], NULL);
+                        gdm_user_verifier_external_auth_proxy_new (connection,
+                                                                   G_DBUS_PROXY_FLAGS_NONE,
+                                                                   NULL,
+                                                                   SESSION_DBUS_PATH,
+                                                                   cancellable,
+                                                                   (GAsyncReadyCallback)
+                                                                   on_user_verifier_external_auth_proxy_created,
+                                                                   data);
                 } else {
                         g_debug ("User verifier extension %s is unsupported", client->enabled_extensions[i]);
                         g_hash_table_remove (user_verifier_extensions,
@@ -845,6 +881,34 @@ gdm_client_get_user_verifier_choice_list (GdmClient *client)
 
         return g_hash_table_lookup (user_verifier_extensions,
                                     gdm_user_verifier_choice_list_interface_info ()->name);
+}
+
+/**
+ * gdm_client_get_user_verifier_external_auth:
+ * @client: a #GdmClient
+ *
+ * Gets a #GdmUserVerifierExternalAuth object that can be used to
+ * verify a user's local account.
+ *
+ * Returns: (transfer none): #GdmUserVerifierExternalAuth or %NULL if user
+ * verifier isn't yet fetched, or daemon doesn't support choice lists
+ */
+GdmUserVerifierExternalAuth *
+gdm_client_get_user_verifier_external_auth (GdmClient *client)
+{
+        GHashTable *user_verifier_extensions = NULL;
+
+        if (client->user_verifier_for_reauth != NULL)
+                user_verifier_extensions = g_object_get_data (G_OBJECT (client->user_verifier_for_reauth), "gdm-client-user-verifier-extensions");
+
+        if (user_verifier_extensions == NULL && client->user_verifier != NULL)
+                user_verifier_extensions = g_object_get_data (G_OBJECT (client->user_verifier), "gdm-client-user-verifier-extensions");
+
+        if (user_verifier_extensions == NULL)
+                return NULL;
+
+        return g_hash_table_lookup (user_verifier_extensions,
+                                    gdm_user_verifier_external_auth_interface_info ()->name);
 }
 
 static void

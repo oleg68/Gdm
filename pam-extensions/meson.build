@@ -9,7 +9,8 @@ if pam_extensions_supported
 
   header_files = files('gdm-pam-extensions.h',
                        'gdm-pam-extensions-common.h',
-                       'gdm-choice-list-pam-extension.h')
+                       'gdm-choice-list-pam-extension.h',
+                       'gdm-external-auth-pam-extension.h')
 
   pam_extensions_inc = include_directories('.')
   install_headers(header_files,

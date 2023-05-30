@@ -29,6 +29,34 @@
 
 #include <security/pam_appl.h>
 
+#include <glib.h>
+
+/* There's no builtin way to count the number of variadic arguments passed in a macro, so we fake it.
+ * If there were no args passed, 10 would be in slot _1, slot _10 would be 1, and N would be 0.
+ * But as more args get passed, 10 moves right more and more slots, and 1 and the lower numbers get
+ * moved past the named slots into the internal ... part,
+ * Because the numbers are sequential and N is closest to the internal ... part, it reflects how many
+ * lower numbers are shifted into that ... part, and so it also reflects how many
+ * arguments are put in front.
+ */
+#define GDM_COUNT_ARGS(...)  GDM_COUNT_ARGS_INTERNAL(,##__VA_ARGS__, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
+#define GDM_COUNT_ARGS_INTERNAL(_blank, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, N, ...) N
+
+#define GDM_NAMESPACE_STRING(x, y) x "." y
+#define GDM_NAMESPACE_STRINGS_1(prefix, x) GDM_NAMESPACE_STRING(prefix, x)
+#define GDM_NAMESPACE_STRINGS_2(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_1(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_3(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_2(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_4(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_3(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_5(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_4(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_6(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_5(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_7(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x)" " GDM_NAMESPACE_STRINGS_6(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_8(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_7(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_9(prefix, x, ...) GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_8(prefix, __VA_ARGS__)
+#define GDM_NAMESPACE_STRINGS_10(prefix, x, ...)(GDM_NAMESPACE_STRING(prefix, x) " " GDM_NAMESPACE_STRINGS_9(prefix, __VA_ARGS__)
+
+#define GDM_PAM_EXTENSION_DEFINE_TYPES(extension, ...) (extension " " G_PASTE(GDM_NAMESPACE_STRINGS_, GDM_COUNT_ARGS(__VA_ARGS__)) (extension, __VA_ARGS__))
+
+
 typedef struct {
         uint32_t length;
 
@@ -66,7 +94,58 @@ typedef struct {
         } \
         _invalid; \
 })
-#define GDM_PAM_EXTENSION_MESSAGE_MATCH(msg, supported_extensions, name) (strcmp (supported_extensions[msg->type], name) == 0)
+
+bool GDM_PAM_EXTENSION_MESSAGE_MATCH(GdmPamExtensionMessage *msg, char **supported_extensions, const char *name)
+{
+        bool _match = FALSE;
+        int _t = -1, _i = 0;
+        int _name_length;
+        _name_length = strlen (name);
+        for (_i = 0; supported_extensions[_i] != NULL && !_match; _i++) {
+                const char *_p = supported_extensions[_i];
+                while (*_p != '\0' && _t < UCHAR_MAX) {
+                        size_t _length;
+                        _length = strcspn (_p, " ");
+                        if (_length > 0)
+                                _t++;
+                        if (_length == _name_length && strncmp (name, _p, _length) == 0) {
+                                _match = _t == msg->type;
+                                break;
+                        }
+                        _p += _length;
+                        _length = strspn (_p, " ");
+                        _p += _length;
+                }
+        }
+        return _match;
+}
+
+#if 0
+#define GDM_PAM_EXTENSION_MESSAGE_MATCH(msg, supported_extensions, name) \
+({ \
+        bool _match = FALSE; \
+        int _t = -1, _i = 0; \
+        int _name_length; \
+        _name_length = strlen (name); \
+        for (_i = 0; supported_extensions[_i] != NULL && !_match; _i++) { \
+                const char *_p = supported_extensions[_i]; \
+                while (*_p != '\0' && _t < UCHAR_MAX) { \
+                        size_t _length; \
+                        _length = strcspn (_p, " "); \
+                        if (_length > 0) \
+                                _t++; \
+                        if (_length == _name_length && strncmp (name, _p, _length) == 0) { \
+                                _match = _t == msg->type; \
+                                break; \
+                        } \
+                        _p += _length; \
+                        _length = strspn (_p, " "); \
+                        _p += _length; \
+                } \
+        } \
+        _match; \
+})
+#endif
 
 /* environment block should be a statically allocated chunk of memory.  This is important because
  * putenv() will leak otherwise (and setenv isn't thread safe)
@@ -79,7 +158,7 @@ typedef struct {
         _p = environment_block; \
         _p = stpncpy (_p, "GDM_SUPPORTED_PAM_EXTENSIONS", sizeof(environment_block)); \
         *_p = '\0'; \
-        _size += strlen (_p); \
+        _size += strlen (environment_block); \
         for (_t = 0; supported_extensions[_t] != NULL && _t < UCHAR_MAX; _t++) {\
                 size_t _next_chunk = strlen (supported_extensions[_t]) + strlen (" "); \
                 if (_size + _next_chunk >= sizeof (environment_block)) \
@@ -104,13 +183,15 @@ typedef struct {
         bool _supported = false; \
         unsigned char _t = 0; \
         const char *_supported_extensions; \
+        size_t _name_length; \
+        _name_length = strcspn (name, " "); \
         _supported_extensions = getenv ("GDM_SUPPORTED_PAM_EXTENSIONS"); \
         if (_supported_extensions != NULL) { \
                 const char *_p = _supported_extensions; \
                 while (*_p != '\0') { \
                         size_t _length; \
                         _length = strcspn (_p, " "); \
-                        if (strncmp (_p, name, _length) == 0) { \
+                        if (_name_length == _length && strncmp (_p, name, _length) == 0) { \
                                 _supported = true; \
                                 break; \
                         } \
