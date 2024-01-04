@@ -152,3 +152,5 @@ po/Rules-quot
 po/stamp-it
 
 test-driver
+
+/ide-projects/Netbeans19/nbproject/private/
