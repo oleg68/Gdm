@@ -214,10 +214,14 @@ spawn_x_server (State        *state,
         char     *vt_string = NULL;
         char     *display_number;
         gsize     display_number_size;
+	const char *xdg_seat;
 
+	xdg_seat = g_getenv ("XDG_SEAT");
         auth_file = prepare_auth_file ();
 
-        g_debug ("Running X server");
+        g_debug (
+		"Running X server XDG_SEAT=%s",
+		xdg_seat != NULL ? xdg_seat : "(null)");
 
         ret = g_unix_open_pipe (pipe_fds, FD_CLOEXEC, &error);
 
@@ -247,6 +251,9 @@ spawn_x_server (State        *state,
 
         if (vt_string != NULL) {
                 g_ptr_array_add (arguments, vt_string);
+        } else if (xdg_seat != NULL) {
+		g_ptr_array_add (arguments, "-seat");
+		g_ptr_array_add (arguments, g_strdup (xdg_seat));
         }
 
         g_ptr_array_add (arguments, "-displayfd");
@@ -924,6 +931,9 @@ main (int    argc,
 
         g_unix_signal_add (SIGTERM, (GSourceFunc) on_sigterm, state);
 
+        if (!connect_to_display_manager (state))
+                goto out;
+
         ret = spawn_x_server (state, allow_remote_connections, state->cancellable);
 
         if (!ret) {
@@ -949,9 +959,6 @@ main (int    argc,
                 exit_status = EX_SOFTWARE;
                 goto out;
         }
-
-        if (!connect_to_display_manager (state))
-                goto out;
 
         ret = register_display (state, state->cancellable);
 

@@ -576,7 +576,8 @@ GPtrArray *
 gdm_get_script_environment (const char *username,
                             const char *display_name,
                             const char *display_hostname,
-                            const char *display_x11_authority_file)
+                            const char *display_x11_authority_file,
+	                    const char *display_seat)
 {
         GPtrArray     *env;
         GHashTable    *hash;
@@ -633,6 +634,9 @@ gdm_get_script_environment (const char *username,
         if (display_name) {
                 g_hash_table_insert (hash, g_strdup ("DISPLAY"), g_strdup (display_name));
         }
+	if (display_seat) {
+                g_hash_table_insert (hash, g_strdup ("XDG_SEAT"), g_strdup (display_seat));
+	}
         g_hash_table_insert (hash, g_strdup ("PATH"), g_strdup (GDM_SESSION_DEFAULT_PATH));
         g_hash_table_insert (hash, g_strdup ("RUNNING_UNDER_GDM"), g_strdup ("true"));
 
@@ -651,7 +655,8 @@ gdm_run_script (const char *dir,
                 const char *username,
                 const char *display_name,
                 const char *display_hostname,
-                const char *display_x11_authority_file)
+                const char *display_x11_authority_file,
+	        const char *display_seat)
 {
         char      *script;
         char     **argv;
@@ -715,7 +720,8 @@ gdm_run_script (const char *dir,
         env = gdm_get_script_environment (username,
                                           display_name,
                                           display_hostname,
-                                          display_x11_authority_file);
+                                          display_x11_authority_file,
+		                          display_seat);
 
         res = g_spawn_sync (NULL,
                             argv,

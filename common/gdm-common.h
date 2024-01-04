@@ -77,13 +77,15 @@ gboolean       gdm_goto_login_session     (GCancellable  *cancellable,
 GPtrArray     *gdm_get_script_environment (const char *username,
                                            const char *display_name,
                                            const char *display_hostname,
-                                           const char *display_x11_authority_file);
+                                           const char *display_x11_authority_file,
+	                                   const char *display_seat);
 
 gboolean       gdm_run_script             (const char *dir,
                                            const char *username,
                                            const char *display_name,
                                            const char *display_hostname,
-                                           const char *display_x11_authority_file);
+                                           const char *display_x11_authority_file,
+	                                   const char *display_seat);
 
 gboolean      gdm_shell_var_is_valid_char (char c,
                                            gboolean first);

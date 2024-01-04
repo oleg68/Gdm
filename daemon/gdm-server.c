@@ -129,7 +129,8 @@ gdm_server_ready (GdmServer *server)
         gdm_run_script (GDMCONFDIR "/Init", GDM_USERNAME,
                         server->display_name,
                         NULL, /* hostname */
-                        server->auth_file);
+                        server->auth_file,
+			NULL /* seat */);
 
         g_signal_emit (server, signals[READY], 0);
 }

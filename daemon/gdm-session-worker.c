@@ -1687,7 +1687,8 @@ run_script (GdmSessionWorker *worker,
                                worker->username,
                                worker->x11_display_name,
                                worker->display_is_local? NULL : worker->hostname,
-                               worker->x11_authority_file);
+                               worker->x11_authority_file,
+			       worker->display_seat_id);
 }
 
 static void
